@@ -1,0 +1,14 @@
+node_modules/
+.npm-cache/
+coverage/
+data/*
+!data/.gitkeep
+.env
+.env.*
+!.env.example
+refresh-token*
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

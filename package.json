@@ -1,0 +1,39 @@
+{
+  "name": "steam-idler",
+  "version": "2.0.0",
+  "private": true,
+  "description": "A supervised, observable Steam game idler for Ubuntu",
+  "license": "MIT",
+  "keywords": [
+    "steam",
+    "idler",
+    "systemd"
+  ],
+  "type": "module",
+  "packageManager": "npm@11.6.2",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "files": [
+    ".env.example",
+    "deploy/",
+    "scripts/",
+    "src/"
+  ],
+  "scripts": {
+    "start": "node src/main.js",
+    "enroll": "node scripts/enroll.js",
+    "test": "node --test --test-concurrency=1",
+    "check": "node --check src/config.js && node --check src/errors.js && node --check src/logger.js && node --check src/notifier.js && node --check src/retry.js && node --check src/token-store.js && node --check src/idler.js && node --check src/main.js && node --check scripts/enroll.js"
+  },
+  "dependencies": {
+    "readline-sync": "1.4.10",
+    "steam-session": "1.9.4",
+    "steam-user": "5.3.0"
+  },
+  "overrides": {
+    "adm-zip": "0.6.0",
+    "binarykvparser": "2.2.0",
+    "protobufjs": "7.6.5"
+  }
+}
