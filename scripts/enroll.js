@@ -60,19 +60,40 @@ async function runEnrollment({
 
 		if (response.actionRequired) {
 			const actions = response.validActions ?? [];
-			const canApprove = actions.some((action) => action.type === guardTypes.DeviceConfirmation);
-			const canEnterCode = actions.some((action) => action.type === guardTypes.DeviceCode);
+			const canApproveInApp = actions.some(
+				(action) => action.type === guardTypes.DeviceConfirmation,
+			);
+			const canApproveByEmail = actions.some(
+				(action) => action.type === guardTypes.EmailConfirmation,
+			);
+			const canEnterDeviceCode = actions.some(
+				(action) => action.type === guardTypes.DeviceCode,
+			);
+			const canEnterEmailCode = actions.some(
+				(action) => action.type === guardTypes.EmailCode,
+			);
 
-			if (canApprove) {
+			if (canApproveInApp) {
 				logger.info('mobile_approval_required', {
 					message: 'Approve the login in the Steam mobile app.',
 				});
-			} else if (canEnterCode) {
-				const code = readGuardCode();
+			} else if (canApproveByEmail) {
+				logger.info('email_approval_required', {
+					message: 'Approve the Steam login using the email Steam sent you.',
+				});
+			} else if (canEnterDeviceCode || canEnterEmailCode) {
+				const type = canEnterDeviceCode ? 'device' : 'email';
+				const code = readGuardCode({ type });
 				await session.submitSteamGuardCode(code);
 			} else {
+				const offeredActions = actions.map((action) => ({
+					type: action.type,
+					detail: action.detail,
+				}));
 				session.cancelLoginAttempt?.();
-				throw new Error('Steam did not offer a supported Steam Guard action');
+				throw new Error(
+					`Steam did not offer a supported Steam Guard action: ${JSON.stringify(offeredActions)}`,
+				);
 			}
 		}
 
@@ -110,7 +131,10 @@ async function main() {
 			accountName,
 			password,
 			tokenFile,
-			readGuardCode: () => readlineSync.question('Steam Guard code: ', { hideEchoBack: true }),
+			readGuardCode: ({ type }) => readlineSync.question(
+				type === 'email' ? 'Steam Guard email code: ' : 'Steam Guard mobile code: ',
+				{ hideEchoBack: true },
+			),
 			writeToken: writeTokenAtomic,
 			logger,
 		});
