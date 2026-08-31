@@ -10,7 +10,10 @@ test('systemd unit preserves restart, operator-exit, and shutdown policies', asy
   assert.match(unit, /^User=steam-idler$/m);
   assert.match(unit, /^ExecStart=\/usr\/bin\/node \/opt\/steam-idler\/src\/main\.js$/m);
   assert.match(unit, /^Restart=always$/m);
+  assert.match(unit, /^RestartSec=30$/m);
   assert.match(unit, /^RestartPreventExitStatus=78$/m);
+  assert.match(unit, /^StartLimitIntervalSec=0$/m);
+  assert.doesNotMatch(unit, /^StartLimitBurst=/m);
   assert.match(unit, /^UMask=0077$/m);
 
   const timeoutSeconds = Number(unit.match(/^TimeoutStopSec=(\d+)$/m)?.[1]);
