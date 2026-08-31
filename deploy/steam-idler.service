@@ -2,8 +2,7 @@
 Description=Steam game idler
 Wants=network-online.target
 After=network-online.target
-StartLimitIntervalSec=300
-StartLimitBurst=5
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -14,7 +13,7 @@ Environment=NODE_ENV=production
 EnvironmentFile=/etc/steam-idler.env
 ExecStart=/usr/bin/node /opt/steam-idler/src/main.js
 Restart=always
-RestartSec=10
+RestartSec=30
 RestartPreventExitStatus=78
 TimeoutStopSec=45
 KillSignal=SIGTERM
