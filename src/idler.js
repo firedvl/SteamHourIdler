@@ -1,4 +1,5 @@
 const AUTH_REQUIRED_EXIT_CODE = 78;
+const RECONNECT_WATCHDOG_MS = 10 * 60 * 1_000;
 
 const AUTHENTICATION_RESULTS = new Set([
 	'InvalidPassword',
@@ -69,6 +70,9 @@ function createIdler({
 	heartbeatMs,
 	setIntervalFn = setInterval,
 	clearIntervalFn = clearInterval,
+	setReconnectTimeoutFn = setTimeout,
+	clearReconnectTimeoutFn = clearTimeout,
+	reconnectWatchdogMs = RECONNECT_WATCHDOG_MS,
 	onFatal,
 	notifyAuthenticationRequired,
 	eresultNames = {},
@@ -85,6 +89,7 @@ function createIdler({
 	let blocked = false;
 	let refreshToken;
 	let heartbeatTimer;
+	let reconnectWatchdogTimer;
 	let stopped = false;
 	let tokenWriteWorker = Promise.resolve();
 	let tokenWriterRunning = false;
@@ -107,6 +112,23 @@ function createIdler({
 		return error?.eresult === undefined ? undefined : eresultNames[error.eresult];
 	}
 
+	function clearReconnectWatchdog() {
+		if (reconnectWatchdogTimer === undefined) return;
+		clearReconnectTimeoutFn(reconnectWatchdogTimer);
+		reconnectWatchdogTimer = undefined;
+	}
+
+	function armReconnectWatchdog() {
+		if (reconnectWatchdogTimer !== undefined) return;
+		reconnectWatchdogTimer = setReconnectTimeoutFn(() => {
+			reconnectWatchdogTimer = undefined;
+			if (stopped || connected || state !== 'reconnecting') return;
+			logger.error('reconnect_watchdog_expired', { timeoutMs: reconnectWatchdogMs });
+			onFatal(1);
+		}, reconnectWatchdogMs);
+		reconnectWatchdogTimer?.unref?.();
+	}
+
 	function logOn() {
 		if (stopped) return;
 		try {
@@ -120,8 +142,9 @@ function createIdler({
 		if (state === 'authentication_required') return;
 		setState('authentication_required');
 		connected = false;
+		clearReconnectWatchdog();
 		retry.cancel();
-		logger.error('authentication_required', { reason, ... fields });
+		logger.error('authentication_required', { reason, ...fields });
 		if (notifyAuthenticationRequired !== undefined) {
 			void notifyAuthenticationRequired().catch(() => {
 				logger.warn('authentication_notification_failed');
@@ -133,6 +156,7 @@ function createIdler({
 	function handleError(error) {
 		if (stopped) return;
 		connected = false;
+		clearReconnectWatchdog();
 		const resultName = resultNameFor(error);
 		const fields = {
 			message: error?.message ?? String(error),
@@ -202,6 +226,7 @@ function createIdler({
 	client.on('loggedOn', () => {
 		if (stopped) return;
 		connected = true;
+		clearReconnectWatchdog();
 		retry.reset();
 		blocked = false;
 		client.setPersona(personaOnline);
@@ -215,6 +240,7 @@ function createIdler({
 		connected = false;
 		setState('reconnecting');
 		logger.warn('disconnected', { eresult, message, state });
+		armReconnectWatchdog();
 	});
 
 	client.on('error', handleError);
@@ -270,28 +296,29 @@ function createIdler({
 		},
 
 		stop() {
-		if (stopped) return;
-		stopped = true;
-		connected = false;
-		setState('stopping');
-		retry.cancel();
-		if (heartbeatTimer !== undefined) clearIntervalFn(heartbeatTimer);
-		try {
-			client.logOff();
-		} catch (error) {
-			logger.warn('logoff_failed', { error });
-		}
-		logger.info('stopped', { state });
-		if (pendingRefreshToken !== undefined) {
-			shutdownFlushTimer = setTimeout(() => {
-				shutdownExpired = true;
-				expireShutdownFlush();
-				logger.error('refresh_token_shutdown_flush_expired', {
-					timeoutMs: tokenShutdownFlushMs,
-				});
-			}, tokenShutdownFlushMs);
-		}
-		wakeForShutdown();
+			if (stopped) return;
+			stopped = true;
+			connected = false;
+			setState('stopping');
+			clearReconnectWatchdog();
+			retry.cancel();
+			if (heartbeatTimer !== undefined) clearIntervalFn(heartbeatTimer);
+			try {
+				client.logOff();
+			} catch (error) {
+				logger.warn('logoff_failed', { error });
+			}
+			logger.info('stopped', { state });
+			if (pendingRefreshToken !== undefined) {
+				shutdownFlushTimer = setTimeout(() => {
+					shutdownExpired = true;
+					expireShutdownFlush();
+					logger.error('refresh_token_shutdown_flush_expired', {
+						timeoutMs: tokenShutdownFlushMs,
+					});
+				}, tokenShutdownFlushMs);
+			}
+			wakeForShutdown();
 			return tokenWriteWorker;
 		},
 
@@ -300,6 +327,5 @@ function createIdler({
 		},
 	};
 }
-
 
 export { createIdler, AUTH_REQUIRED_EXIT_CODE };
